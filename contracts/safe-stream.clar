@@ -18,7 +18,8 @@
     premium: uint,
     start-block: uint,
     end-block: uint,
-    active: bool
+    active: bool,
+    claimed: bool
   }
 )
 
@@ -68,7 +69,8 @@
             premium: premium,
             start-block: start-block,
             end-block: end-block,
-            active: true
+            active: true,
+            claimed: false
           }
         )
         (ok true)
@@ -85,6 +87,7 @@
       (claim-id (var-get next-claim-id))
     )
     (asserts! (get active user-coverage) err-invalid-claim)
+    (asserts! (not (get claimed user-coverage)) err-invalid-claim)
     (asserts! (<= block-height (get end-block user-coverage)) err-invalid-claim)
     (asserts! (<= income (get threshold user-coverage)) err-invalid-claim)
     (map-set claims
@@ -106,13 +109,19 @@
     (
       (claim (unwrap! (map-get? claims {claim-id: claim-id}) err-invalid-claim))
       (payout-amount (get amount claim))
+      (user-coverage (unwrap! (map-get? coverage {policyholder: (get policyholder claim)}) err-no-coverage))
     )
     (asserts! (is-eq tx-sender contract-owner) err-unauthorized)
     (asserts! (is-eq (get status claim) "pending") err-invalid-claim)
     (asserts! (<= payout-amount (var-get protocol-balance)) err-insufficient-balance)
     
-    (try! (as-contract (stx-transfer? payout-amount tx-sender (get policyholder claim))))
+    (try! (as-contract (stx-transfer? payout-amount (as-contract tx-sender) (get policyholder claim))))
     (var-set protocol-balance (- (var-get protocol-balance) payout-amount))
+    
+    (map-set coverage
+      { policyholder: (get policyholder claim) }
+      (merge user-coverage { claimed: true })
+    )
     
     (map-set claims
       { claim-id: claim-id }
@@ -137,7 +146,11 @@
       (base-rate u100)
       (risk-factor (/ (* threshold u10000) amount))
       (duration-factor (/ duration u144))
+      (base-premium (/ (* amount base-rate) u10000))
     )
-    (* (/ (* amount base-rate) u10000) (+ duration-factor u1))
+    (if (> duration-factor u365)
+      (* base-premium u2)
+      (* base-premium (+ u1 (/ duration-factor u365)))
+    )
   )
 )
