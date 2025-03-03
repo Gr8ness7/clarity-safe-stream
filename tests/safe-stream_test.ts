@@ -75,5 +75,17 @@ Clarinet.test({
     assertEquals(block.receipts.length, 3);
     assertEquals(block.receipts[1].result, '(ok u0)');
     assertEquals(block.receipts[2].result, '(ok true)');
+    
+    // Verify cannot submit second claim
+    let block2 = chain.mineBlock([
+      Tx.contractCall(
+        "safe-stream", 
+        "submit-claim",
+        [types.uint(400000)],
+        wallet_1.address
+      )
+    ]);
+    
+    assertEquals(block2.receipts[0].result, '(err u104)');
   }
 });
